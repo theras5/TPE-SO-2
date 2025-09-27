@@ -1,0 +1,12 @@
+#Binary Files
+*.sys
+
+#The images
+*.img
+*.qcow2
+*.vmdk
+
+#Object files
+*.o
+*.bin
+.bash_history
