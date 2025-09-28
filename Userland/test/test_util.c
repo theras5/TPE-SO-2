@@ -6,7 +6,7 @@
 static uint32_t m_z = 362436069;
 static uint32_t m_w = 521288629;
 
-uint32_t GetUint() {
+uint32_t GetUint(void) {
   m_z = 36969 * (m_z & 65535) + (m_z >> 16);
   m_w = 18000 * (m_w & 65535) + (m_w >> 16);
   return (m_z << 16) + m_w;
@@ -59,7 +59,7 @@ void bussy_wait(uint64_t n) {
     ;
 }
 
-void endless_loop() {
+void endless_loop(void) {
   while (1)
     ;
 }

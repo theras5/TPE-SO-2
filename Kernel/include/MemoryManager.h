@@ -5,8 +5,12 @@
 
 typedef struct MemoryManagerCDT *MemoryManagerADT;
 
-MemoryManagerADT createMemoryManager(void *const restrict memoryForMemoryManager, void *const restrict managedMemory);
+void createMemory(void *const restrict startAddress, const size_t size);
 
-void *allocMemory(MemoryManagerADT const restrict memoryManager, const size_t memoryToAllocate);
+void *allocMemory(const size_t size);
+
+void freeMemory(void *blockAddress);
+
+// char *consultMemory(void);
 
 #endif

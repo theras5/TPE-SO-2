@@ -1,128 +1,158 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h> // Añadido para debugging si es necesario
 
 #include "CuTest.h"
 #include "MemoryManager.h"
 #include "MemoryManagerTest.h"
 
-#define MANAGED_MEMORY_SIZE 20480
+// Aumentamos el tamaño para que sea más representativo para el buddy system
+#define MANAGED_MEMORY_SIZE (1024 * 1024) // 1 MB
 #define ALLOCATION_SIZE 1024
-#define WRITTEN_VALUE 'a'
 
+static void *managedMemoryPool = NULL; // El gran bloque de memoria que simularemos
+
+// --- DECLARACIÓN DE TESTS ---
 void testAllocMemory(CuTest *const cuTest);
 void testTwoAllocations(CuTest *const cuTest);
-void testWriteMemory(CuTest *const cuTest);
+void testWriteAndReadMemory(CuTest *const cuTest);
+void testFreeAndRealloc(CuTest *const cuTest); // ¡Nuevo test!
 
-static const size_t TestQuantity = 3;
-static const Test MemoryManagerTests[] = {testAllocMemory, testTwoAllocations, testWriteMemory};
+static const size_t TestQuantity = 4;
+static const Test MemoryManagerTests[] = {
+    testAllocMemory,
+    testTwoAllocations,
+    testWriteAndReadMemory,
+    testFreeAndRealloc // Añadido
+};
 
-static inline void givenAMemoryManager(CuTest *const cuTest);
-static inline void givenAMemoryAmount();
-static inline void givenAnAllocation();
+// --- FUNCIONES GIVEN / WHEN / THEN ---
+static void givenAMemoryManager(CuTest *const cuTest);
+static void whenMemoryIsAllocated(void **ptr, size_t size);
+static void whenMemoryIsFreed(void *ptr);
 
-static inline void whenMemoryIsAllocated();
-static inline void whenMemoryIsWritten();
+static void thenPointerIsNotNull(CuTest *const cuTest, void *ptr);
+static void thenPointersAreDifferent(CuTest *const cuTest, void *ptr1, void *ptr2);
+static void thenPointersDoNotOverlap(CuTest *const cuTest, void *ptr1, void *ptr2, size_t size);
+static void thenPointerIsTheSame(CuTest *const cuTest, void *ptr1, void *ptr2);
 
-static inline void thenSomeMemoryIsReturned(CuTest *const cuTest);
-static inline void thenTheTwoAdressesAreDifferent(CuTest *const cuTest);
-static inline void thenBothDoNotOverlap(CuTest *const cuTest);
-static inline void thenMemorySuccessfullyWritten(CuTest *const cuTest);
-
-static MemoryManagerADT memoryManager;
-
-static size_t memoryToAllocate;
-
-static void *allocatedMemory = NULL;
-static void *anAllocation = NULL;
-
+// --- SUITE DE TESTS ---
 CuSuite *getMemoryManagerTestSuite(void) {
-	CuSuite *const suite = CuSuiteNew();
+    CuSuite *const suite = CuSuiteNew();
 
-	for (size_t i = 0; i < TestQuantity; i++)
-		SUITE_ADD_TEST(suite, MemoryManagerTests[i]);
+    // Inicializa el pool de memoria una vez para todos los tests
+    managedMemoryPool = malloc(MANAGED_MEMORY_SIZE);
+    if (managedMemoryPool == NULL) {
+        // Si no podemos ni empezar, fallamos estrepitosamente.
+        printf("FATAL: Could not allocate memory for the test pool.\n");
+        exit(1);
+    }
 
-	return suite;
+    for (size_t i = 0; i < TestQuantity; i++)
+        SUITE_ADD_TEST(suite, MemoryManagerTests[i]);
+
+    return suite;
 }
 
+// --- IMPLEMENTACIÓN DE TESTS ---
+
 void testAllocMemory(CuTest *const cuTest) {
-	givenAMemoryManager(cuTest);
-	givenAMemoryAmount();
+    // Arrange
+    givenAMemoryManager(cuTest);
+    void *allocatedMemory = NULL;
 
-	whenMemoryIsAllocated();
+    // Act
+    whenMemoryIsAllocated(&allocatedMemory, ALLOCATION_SIZE);
 
-	thenSomeMemoryIsReturned(cuTest);
+    // Assert
+    thenPointerIsNotNull(cuTest, allocatedMemory);
 }
 
 void testTwoAllocations(CuTest *const cuTest) {
-	givenAMemoryManager(cuTest);
-	givenAMemoryAmount();
-	givenAnAllocation();
+    // Arrange
+    givenAMemoryManager(cuTest);
+    void *firstAllocation = NULL;
+    void *secondAllocation = NULL;
 
-	whenMemoryIsAllocated();
+    // Act
+    whenMemoryIsAllocated(&firstAllocation, ALLOCATION_SIZE);
+    whenMemoryIsAllocated(&secondAllocation, ALLOCATION_SIZE);
 
-	thenSomeMemoryIsReturned(cuTest);
-	thenTheTwoAdressesAreDifferent(cuTest);
-	thenBothDoNotOverlap(cuTest);
+    // Assert
+    thenPointerIsNotNull(cuTest, firstAllocation);
+    thenPointerIsNotNull(cuTest, secondAllocation);
+    thenPointersAreDifferent(cuTest, firstAllocation, secondAllocation);
+    thenPointersDoNotOverlap(cuTest, firstAllocation, secondAllocation, ALLOCATION_SIZE);
 }
 
-void testWriteMemory(CuTest *const cuTest) {
-	givenAMemoryManager(cuTest);
-	givenAMemoryAmount();
-	givenAnAllocation();
+void testWriteAndReadMemory(CuTest *const cuTest) {
+    // Arrange
+    givenAMemoryManager(cuTest);
+    void *mem = NULL;
+    whenMemoryIsAllocated(&mem, sizeof(char));
 
-	whenMemoryIsWritten();
+    // Act
+    char *ptr = (char *)mem;
+    *ptr = 'A';
 
-	thenMemorySuccessfullyWritten(cuTest);
+    // Assert
+    CuAssertIntEquals(cuTest, 'A', *ptr);
 }
 
-inline void givenAMemoryManager(CuTest *const cuTest) {
-	void *memoryForMemoryManager = malloc(sizeof(void *));
-	if (memoryForMemoryManager == NULL) {
-		CuFail(cuTest, "[givenAMemoryManager] Memory for Memory Manager cannot be null");
-	}
+void testFreeAndRealloc(CuTest *const cuTest) {
+    // Arrange
+    givenAMemoryManager(cuTest);
+    void *firstAllocation = NULL;
+    void *secondAllocation = NULL;
 
-	void *managedMemory = malloc(MANAGED_MEMORY_SIZE);
-	if (managedMemory == NULL) {
-		CuFail(cuTest, "[givenAMemoryManager] Managed Memory cannot be null");
-	}
+    // Act
+    whenMemoryIsAllocated(&firstAllocation, ALLOCATION_SIZE);
+    whenMemoryIsFreed(firstAllocation);
+    whenMemoryIsAllocated(&secondAllocation, ALLOCATION_SIZE);
 
-	memoryManager = createMemoryManager(memoryForMemoryManager, managedMemory);
+    // Assert
+    thenPointerIsNotNull(cuTest, firstAllocation);
+    thenPointerIsNotNull(cuTest, secondAllocation);
+    // Si liberamos un bloque, el siguiente alloc del mismo tamaño debería devolver el mismo puntero.
+    thenPointerIsTheSame(cuTest, firstAllocation, secondAllocation);
 }
 
-inline void givenAMemoryAmount() {
-	memoryToAllocate = ALLOCATION_SIZE;
+// --- IMPLEMENTACIÓN DE HELPERS ---
+
+void givenAMemoryManager(CuTest *const cuTest) {
+    // Simplemente llamamos a la función de inicialización global
+    // sobre nuestro pool de memoria simulado.
+    createMemory(managedMemoryPool, MANAGED_MEMORY_SIZE);
 }
 
-inline void givenAnAllocation() {
-	anAllocation = allocMemory(memoryManager, memoryToAllocate);
+void whenMemoryIsAllocated(void **ptr, size_t size) {
+    *ptr = allocMemory(size);
 }
 
-inline void whenMemoryIsAllocated() {
-	allocatedMemory = allocMemory(memoryManager, memoryToAllocate);
+void whenMemoryIsFreed(void *ptr) {
+    freeMemory(ptr);
 }
 
-inline void whenMemoryIsWritten() {
-	*((char *) anAllocation) = WRITTEN_VALUE;
+void thenPointerIsNotNull(CuTest *const cuTest, void *ptr) {
+    CuAssertPtrNotNull(cuTest, ptr);
 }
 
-inline void thenSomeMemoryIsReturned(CuTest *const cuTest) {
-	CuAssertPtrNotNull(cuTest, allocatedMemory);
+void thenPointersAreDifferent(CuTest *const cuTest, void *ptr1, void *ptr2) {
+    CuAssertTrue(cuTest, ptr1 != ptr2);
 }
 
-inline void thenTheTwoAdressesAreDifferent(CuTest *const cuTest) {
-	CuAssertTrue(cuTest, anAllocation != allocatedMemory);
+void thenPointersDoNotOverlap(CuTest *const cuTest, void *ptr1, void *ptr2, size_t size) {
+    // Para punteros void*, la resta se hace casteando a un tipo de 1 byte como char* o uintptr_t
+    uintptr_t addr1 = (uintptr_t)ptr1;
+    uintptr_t addr2 = (uintptr_t)ptr2;
+
+    uintptr_t distance = (addr1 > addr2) ? (addr1 - addr2) : (addr2 - addr1);
+
+    // La distancia debe ser al menos el tamaño de la asignación.
+    // Damos un margen por el tamaño del header.
+    CuAssertTrue(cuTest, distance >= size);
 }
 
-inline void thenBothDoNotOverlap(CuTest *const cuTest) {
-	int distance = (char *) anAllocation - (char *) allocatedMemory;
-	distance = abs(distance);
-
-	CuAssertTrue(cuTest, distance >= ALLOCATION_SIZE);
-}
-
-inline void thenMemorySuccessfullyWritten(CuTest *const cuTest) {
-	uint8_t writtenValue = WRITTEN_VALUE;
-	uint8_t readValue = *((uint8_t *) anAllocation);
-
-	CuAssertIntEquals(cuTest, writtenValue, readValue);
+void thenPointerIsTheSame(CuTest *const cuTest, void *ptr1, void *ptr2) {
+    CuAssertPtrEquals(cuTest, ptr1, ptr2);
 }
